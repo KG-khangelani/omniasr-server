@@ -19,6 +19,8 @@
 #   LATEST_TAG    - Set to "true" to also tag the image as "latest"
 #                   (default: false)
 #
+#   BACKEND       - cpu (default) or cuda
+#
 #   PUSH          - Set to "true" to push the image to the registry after building
 #                   (default: false)
 #
@@ -48,7 +50,24 @@
 
 
 MODEL_NAME=${MODEL_NAME:-omniASR_LLM_300M_v2}
-BASE_TAG=cu126-pt280
+BACKEND=${BACKEND:-cpu}
+
+case "$BACKEND" in
+    cpu)
+        TARGET=default
+        BASE_TAG=cpu-pt291
+        RUN_FLAGS=""
+        ;;
+    cuda)
+        TARGET=cuda
+        BASE_TAG=cu126-pt291
+        RUN_FLAGS="--gpus all"
+        ;;
+    *)
+        echo "Unsupported BACKEND=$BACKEND (expected cpu or cuda)" >&2
+        exit 2
+        ;;
+esac
 
 # Convert model name to tag suffix, e.g.:
 #     omniASR_LLM_300M_v2 -> llm-300m-v2
@@ -74,6 +93,7 @@ fi
 # Build command
 BUILD_CMD="docker buildx build \
     --platform linux/amd64 \
+    --target $TARGET \
     --build-arg MODEL_NAME=$MODEL_NAME \
     $TAGS"
 
@@ -86,4 +106,4 @@ fi
 $BUILD_CMD .
 
 echo "Docker image built successfully! You can run it with:"
-echo "    docker run --gpus all -p 8080:8080 $IMAGE_NAME:$BASE_TAG-$TAG_SUFFIX"
+echo "    docker run $RUN_FLAGS -p 8080:8080 $IMAGE_NAME:$BASE_TAG-$TAG_SUFFIX"

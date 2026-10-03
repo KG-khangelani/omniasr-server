@@ -49,7 +49,7 @@ def test_get_models(client: TestClient):
     assert isinstance(model["created"], int)
 
 
-@patch("app.server.MODEL_NAME", "custom_model_name")
+@patch("app.routes.MODEL_NAME", "custom_model_name")
 def test_get_models_uses_configured_model_name(client: TestClient):
     """Model ID should reflect the configured MODEL_NAME."""
     response = client.get("/v1/models")

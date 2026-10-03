@@ -5,17 +5,28 @@ description = "High-performance Omnilingual-ASR model server with OpenAI Whisper
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "omnilingual-asr==0.2.0",
     "soundfile==0.14.0",
     "fastapi==0.142.2",
     "pydantic==2.13.5",
     "python-multipart==0.0.32",
     "uvicorn==0.54.0",
+]
 
-    # Keep this model stack aligned with the fairseq2 pt2.9.1/cu126 wheel index.
+[project.optional-dependencies]
+# Keep the model stack aligned with an official fairseq2/PyTorch wheel matrix.
+# Select exactly one backend; CPU is the default Docker target.
+cpu = [
+    "omnilingual-asr==0.2.0",
     "torch==2.9.1",
     "torchaudio==2.9.1",
-    "fairseq2==0.8.1",
+    "fairseq2[arrow]==0.8.1",
+    "fairseq2n==0.8.1",
+]
+cu126 = [
+    "omnilingual-asr==0.2.0",
+    "torch==2.9.1",
+    "torchaudio==2.9.1",
+    "fairseq2[arrow]==0.8.1",
     "fairseq2n==0.8.1",
 ]
 
@@ -29,39 +40,49 @@ pythonpath = ["."]
 # omnilingual-asr 0.2.0 still declares fairseq2<=0.6.0, but fairseq2 publishes
 # an official PyTorch 2.9.1/CUDA 12.6 build. Keep the compatibility override
 # explicit until omnilingual-asr updates its package metadata.
-override-dependencies = ["fairseq2==0.8.1"]
+override-dependencies = ["fairseq2[arrow]==0.8.1"]
+conflicts = [
+    [
+        { extra = "cpu" },
+        { extra = "cu126" },
+    ],
+]
 
 [tool.uv.sources]
 torch = [
-    { index = "pytorch-cpu", marker = "sys_platform == 'darwin' and platform_machine == 'arm64'" },
-    { index = "pytorch-cu126", marker = "sys_platform != 'darwin'" },
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu126", extra = "cu126" },
 ]
 torchaudio = [
-    { index = "pytorch-cpu", marker = "sys_platform == 'darwin' and platform_machine == 'arm64'" },
-    { index = "pytorch-cu126", marker = "sys_platform != 'darwin'" },
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu126", extra = "cu126" },
 ]
 fairseq2 = [
-    { index = "fairseq2-cpu", marker = "sys_platform == 'darwin' and platform_machine == 'arm64'" },
-    { index = "fairseq2-cu126", marker = "sys_platform != 'darwin'" },
+    { index = "fairseq2-cpu", extra = "cpu" },
+    { index = "fairseq2-cu126", extra = "cu126" },
 ]
 fairseq2n = [
-    { index = "fairseq2-cpu", marker = "sys_platform == 'darwin' and platform_machine == 'arm64'" },
-    { index = "fairseq2-cu126", marker = "sys_platform != 'darwin'" },
+    { index = "fairseq2-cpu", extra = "cpu" },
+    { index = "fairseq2-cu126", extra = "cu126" },
 ]
 
 
 [[tool.uv.index]]
 name = "fairseq2-cu126"
 url = "https://fair.pkg.atmeta.com/fairseq2/whl/pt2.9.1/cu126"
+explicit = true
 
 [[tool.uv.index]]
 name = "fairseq2-cpu"
 url = "https://fair.pkg.atmeta.com/fairseq2/whl/pt2.9.1/cpu"
+explicit = true
 
 [[tool.uv.index]]
 name = "pytorch-cu126"
 url = "https://download.pytorch.org/whl/cu126"
+explicit = true
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
+explicit = true

@@ -8,15 +8,17 @@ A FastAPI-based ASR model server for [Omnilingual ASR](https://github.com/facebo
 
 ```bash
 # Install dependencies with uv
-uv sync
+uv sync --extra cpu
 
 # Run the server
-uv run python main.py
+uv run --extra cpu python main.py
 ```
 
 ## Building a Docker Image
 
-This repo builds the image with CUDA 12.6 and PyTorch 2.8.0. To build against a different CUDA version, you need to update the sources and indices in [pyproject.toml](pyproject.toml).
+The default image is CPU-only. It uses PyTorch 2.9.1 and fairseq2 0.8.1 without CUDA or NVIDIA wheel dependencies. An opt-in CUDA 12.6 image uses the matching PyTorch 2.9.1/fairseq2 0.8.1 wheel matrix.
+
+Omnilingual ASR 0.2.0 still declares `fairseq2<=0.6.0`; this project carries an explicit override to fairseq2 0.8.1. Treat both backends as compatibility candidates until model-load and transcription checks pass for the built image.
 
 ### Helpful resources
 
@@ -31,6 +33,9 @@ The [`build.sh`](build.sh) script is a good place to start your own builds:
 # Build with default model
 bash build.sh
 
+# Build the optional CUDA image
+BACKEND=cuda bash build.sh
+
 # Build with variant model, tag as latest, and push
 MODEL_NAME=omniASR_LLM_1B_v2 LATEST_TAG=true PUSH=true bash build.sh
 
@@ -44,11 +49,12 @@ NAMESPACE=abc PUSH=true bash build.sh
 **Build script options:**
 
 - `MODEL_NAME` - Name of the model to build (default: `omniASR_LLM_300M_v2`)
+- `BACKEND` - `cpu` (default) or `cuda`
 - `NAMESPACE` - Namespace/registry prefix for the image name (optional). If provided, images will be tagged as `NAMESPACE/omniasr-server`. If not provided, defaults to `omniasr-server`
 - `LATEST_TAG` - Set to `"true"` to also tag the image as `latest` (default: `false`)
 - `PUSH` - Set to `"true"` to push the image to the registry after building (default: `false`)
 
-The image will be tagged as `<namespace>/omniasr-server:cu126-pt280-<model-suffix>` where the model suffix is derived from the model name (e.g., `omniASR_LLM_300M_v2` becomes `llm-300m-v2`). If no namespace is provided, it defaults to `omniasr-server:cu126-pt280-<model-suffix>`.
+The image tag begins with `cpu-pt291` by default or `cu126-pt291` for `BACKEND=cuda`, followed by the model suffix.
 
 ### Manual build
 
@@ -58,13 +64,18 @@ You can also build manually using Docker:
 docker build --build-arg MODEL_NAME=omniASR_LLM_300M_v2 -t omniasr-server .
 ```
 
-Then, run with GPU support:
+Then, run the CPU image:
 
 ```bash
-docker run --gpus all -p 8080:8080 omniasr-server
+docker run -p 8080:8080 omniasr-server
 ```
 
-I'm open to 💡 on how to streamline the build process so I can build for multiple CUDA and PyTorch versions.
+Build and run the optional CUDA image explicitly:
+
+```bash
+docker build --target cuda --build-arg MODEL_NAME=omniASR_LLM_300M_v2 -t omniasr-server:cuda .
+docker run --gpus all -p 8080:8080 omniasr-server:cuda
+```
 
 ## API Usage
 
@@ -154,14 +165,14 @@ You can specify the model either at build time or at runtime:
 MODEL_NAME=omniASR_LLM_1B_v2 bash build.sh
 
 # Then run the container
-docker run --gpus all -p 8080:8080 omniasr-server:cu126-pt280-llm-1b-v2
+docker run -p 8080:8080 omniasr-server:cpu-pt291-llm-1b-v2
 ```
 
 **At runtime:**
 
 ```bash
 # Run with a different model (model will be downloaded on first run)
-docker run --gpus all -p 8080:8080 \
+docker run -p 8080:8080 \
   -e MODEL_NAME=omniASR_CTC_1B_v2 \
   omniasr-server
 ```
@@ -169,7 +180,7 @@ docker run --gpus all -p 8080:8080 \
 **When running locally:**
 
 ```bash
-MODEL_NAME=omniASR_CTC_1B_v2 uv run python main.py
+MODEL_NAME=omniASR_CTC_1B_v2 uv run --extra cpu python main.py
 ```
 
 **NOTE:** When running locally, on the first run, `fairseq` will download the weights and cache it to your device. Subsequent runs only loads the cached weights.
