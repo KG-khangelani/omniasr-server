@@ -139,6 +139,7 @@ See the [openai_client.py](scripts/openai_client.py) code. It's pretty straightf
 | `MODEL_NAME` | `omniASR_CTC_300M_v2` | Model to use for transcription |
 | `OMNILINGUAL_PORT` | `8080` | Server port |
 | `OMNILINGUAL_HOST` | `0.0.0.0` | Server host |
+| `OMNILINGUAL_DTYPE` | `auto` | Model dtype: `auto`, `float16`, `bfloat16`, or `float32`. Use `float32` if FP16 CTC inference produces blank output on older GPUs. CPU defaults to FP32. |
 
 ### Changing the Model
 

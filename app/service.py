@@ -1,6 +1,7 @@
 """Async ASR service for Omnilingual-ASR model."""
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 import torch
@@ -28,12 +29,31 @@ class OmnilingualASRService:
         elif torch.backends.mps.is_available():
             device = "mps"
 
-        # Use float16 for compute capability < 8.0 (e.g. T4)
-        dtype = torch.bfloat16
-        if device == "cuda" and torch.cuda.get_device_capability() < (8, 0):
-            dtype = torch.float16
+        dtype_name = os.environ.get("OMNILINGUAL_DTYPE", "auto").lower()
+        dtype_by_name = {
+            "float16": torch.float16,
+            "bfloat16": torch.bfloat16,
+            "float32": torch.float32,
+        }
+        if dtype_name == "auto":
+            if device == "cuda":
+                dtype = (
+                    torch.bfloat16
+                    if torch.cuda.get_device_capability() >= (8, 0)
+                    else torch.float16
+                )
+            else:
+                dtype = torch.float32
+        else:
+            try:
+                dtype = dtype_by_name[dtype_name]
+            except KeyError as exc:
+                allowed = ", ".join(["auto", *dtype_by_name])
+                raise ValueError(
+                    f"Invalid OMNILINGUAL_DTYPE={dtype_name!r}; expected one of: {allowed}"
+                ) from exc
 
-        logger.info(f"Loading model {MODEL_NAME} on {device}...")
+        logger.info(f"Loading model {MODEL_NAME} on {device} with dtype {dtype}...")
         self.pipeline = ASRInferencePipeline(
             model_card=MODEL_NAME, device=device, dtype=dtype
         )
