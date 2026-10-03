@@ -50,7 +50,8 @@ class TestOmnilingualASRService:
     @patch("app.service.ASRInferencePipeline")
     @patch("app.service.torch.backends.mps.is_available", return_value=False)
     @patch("app.service.torch.cuda.is_available", return_value=False)
-    def test_cpu_defaults_to_float32(self, _cuda, _mps, pipeline):
+    def test_cpu_defaults_to_float32(self, _cuda, _mps, pipeline, monkeypatch):
+        monkeypatch.delenv("OMNILINGUAL_DTYPE", raising=False)
         service = OmnilingualASRService()
         service.load_model()
 
