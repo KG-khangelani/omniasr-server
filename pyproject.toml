@@ -5,24 +5,31 @@ description = "High-performance Omnilingual-ASR model server with OpenAI Whisper
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "omnilingual-asr>=0.2.0",
-    "soundfile>=0.13.1",
-    "fastapi>=0.127.0",
-    "pydantic>=2.12.5",
-    "python-multipart>=0.0.21",
-    "uvicorn>=0.34.0",
+    "omnilingual-asr==0.2.0",
+    "soundfile==0.14.0",
+    "fastapi==0.142.2",
+    "pydantic==2.13.5",
+    "python-multipart==0.0.32",
+    "uvicorn==0.54.0",
 
-    "torch>=2.8.0",
-    "torchaudio>=2.8.0",
-    "fairseq2>=0.2.0",
-    "fairseq2n>=0.2.0",
+    # Keep this model stack aligned with the fairseq2 pt2.9.1/cu126 wheel index.
+    "torch==2.9.1",
+    "torchaudio==2.9.1",
+    "fairseq2==0.8.1",
+    "fairseq2n==0.8.1",
 ]
 
 [dependency-groups]
-dev = ["debugpy>=1.8.19", "httpx>=0.28.0", "pytest>=9.0.0"]
+dev = ["debugpy==1.8.22", "httpx==0.28.1", "pytest==9.1.1"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+
+[tool.uv]
+# omnilingual-asr 0.2.0 still declares fairseq2<=0.6.0, but fairseq2 publishes
+# an official PyTorch 2.9.1/CUDA 12.6 build. Keep the compatibility override
+# explicit until omnilingual-asr updates its package metadata.
+override-dependencies = ["fairseq2==0.8.1"]
 
 [tool.uv.sources]
 torch = [
@@ -45,11 +52,11 @@ fairseq2n = [
 
 [[tool.uv.index]]
 name = "fairseq2-cu126"
-url = "https://fair.pkg.atmeta.com/fairseq2/whl/pt2.8.0/cu126"
+url = "https://fair.pkg.atmeta.com/fairseq2/whl/pt2.9.1/cu126"
 
 [[tool.uv.index]]
 name = "fairseq2-cpu"
-url = "https://fair.pkg.atmeta.com/fairseq2/whl/pt2.8.0/cpu"
+url = "https://fair.pkg.atmeta.com/fairseq2/whl/pt2.9.1/cpu"
 
 [[tool.uv.index]]
 name = "pytorch-cu126"

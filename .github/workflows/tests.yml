@@ -1,0 +1,40 @@
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  cpu-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.22"
+          enable-cache: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install CPU dependency set
+        run: |
+          uv venv
+          uv pip install \
+            omnilingual-asr==0.2.0 soundfile==0.14.0 fastapi==0.142.2 \
+            pydantic==2.13.5 python-multipart==0.0.32 uvicorn==0.54.0 \
+            httpx==0.28.1 pytest==9.1.1
+          # Install the explicitly tested core stack last. omnilingual-asr 0.2.0
+          # still caps fairseq2 at 0.6.0 in its package metadata.
+          uv pip install torch==2.9.1 torchaudio==2.9.1 \
+            --index-url https://download.pytorch.org/whl/cpu
+          uv pip install fairseq2==0.8.1 fairseq2n==0.8.1 \
+            --index-url https://fair.pkg.atmeta.com/fairseq2/whl/pt2.9.1/cpu
+          uv pip install --no-deps -e .
+          uv run --no-sync python -c "from importlib.metadata import version; expected={'torch':'2.9.1','torchaudio':'2.9.1','fairseq2':'0.8.1','fairseq2n':'0.8.1'}; actual={name:version(name) for name in expected}; assert actual == expected, actual"
+      - name: Run tests
+        run: uv run --no-sync pytest -q
