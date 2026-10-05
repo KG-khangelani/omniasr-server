@@ -7,10 +7,25 @@ wheels/
 *.egg-info
 
 # Virtual environments
-.venv
+.venv/
+.pytest_cache/
+.ruff_cache/
 
 # VSCode settings
 .vscode/settings.json
 
 # Audio files
-harvard.wav
+*.flac
+*.m4a
+*.mp3
+*.wav
+
+# Local model caches and generated results
+models/
+results/
+*.ckpt
+*.safetensors
+
+# OS metadata
+.DS_Store
+Thumbs.db

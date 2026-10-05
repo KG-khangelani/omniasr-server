@@ -16,6 +16,7 @@ from app.service import asr_service
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+SUPPORTED_RESPONSE_FORMATS = {"json", "text"}
 
 
 @router.get("/health-check")
@@ -57,10 +58,21 @@ async def transcribe(
         model: Model identifier (informational only)
         language: Language code (ISO 639-1 or Omnilingual-ASR format)
         prompt: Optional prompt (not used)
-        response_format: json, verbose_json, text, srt, or vtt
+        response_format: json or text
         temperature: Sampling temperature (not used)
         timestamp_granularities: Timestamp detail level (not used)
     """
+    if response_format not in SUPPORTED_RESPONSE_FORMATS:
+        raise APIError(
+            status_code=400,
+            message=(
+                f"Unsupported response format: {response_format}. "
+                "Supported formats are: json, text"
+            ),
+            param="response_format",
+            code="unsupported_response_format",
+        )
+
     if not file.filename:
         logger.warning("Transcription request rejected: no file provided")
         raise APIError(

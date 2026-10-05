@@ -1,6 +1,6 @@
 """Integration tests for API routes."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -56,3 +56,66 @@ def test_get_models_uses_configured_model_name(client: TestClient):
     model = response.json()["data"][0]
 
     assert model["id"] == "custom_model_name"
+
+
+def test_transcribe_returns_json(client: TestClient):
+    """The default response should match the documented JSON shape."""
+    with patch(
+        "app.routes.asr_service.transcribe",
+        new=AsyncMock(return_value="molo"),
+    ) as transcribe:
+        response = client.post(
+            "/v1/audio/transcriptions",
+            files={"file": ("sample.wav", b"RIFF-test", "audio/wav")},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"text": "molo"}
+    transcribe.assert_awaited_once_with(b"RIFF-test", language=None)
+
+
+def test_transcribe_returns_plain_text(client: TestClient):
+    """The text format should return an unwrapped transcription."""
+    with patch(
+        "app.routes.asr_service.transcribe",
+        new=AsyncMock(return_value="sawubona"),
+    ):
+        response = client.post(
+            "/v1/audio/transcriptions",
+            data={"response_format": "text"},
+            files={"file": ("sample.wav", b"RIFF-test", "audio/wav")},
+        )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain")
+    assert response.text == "sawubona"
+
+
+def test_transcribe_rejects_empty_file(client: TestClient):
+    response = client.post(
+        "/v1/audio/transcriptions",
+        files={"file": ("empty.wav", b"", "audio/wav")},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["param"] == "file"
+
+
+def test_transcribe_rejects_unsupported_response_format(client: TestClient):
+    response = client.post(
+        "/v1/audio/transcriptions",
+        data={"response_format": "srt"},
+        files={"file": ("sample.wav", b"RIFF-test", "audio/wav")},
+    )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["param"] == "response_format"
+    assert error["code"] == "unsupported_response_format"
+
+
+def test_transcribe_requires_file(client: TestClient):
+    response = client.post("/v1/audio/transcriptions")
+
+    assert response.status_code == 400
+    assert response.json()["error"]["type"] == "invalid_request_error"

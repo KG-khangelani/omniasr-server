@@ -13,16 +13,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
         with:
-          version: "0.9.22"
+          version: "0.12.23"
           enable-cache: true
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - name: Install locked CPU dependency set
         run: |
+          uv lock --check
           uv sync --frozen --extra cpu
           uv run --frozen --extra cpu python -c "from importlib.metadata import distributions, version; import torch; expected={'torch':'2.9.1+cpu','torchaudio':'2.9.1+cpu','fairseq2':'0.8.1','fairseq2n':'0.8.1'}; actual={name:version(name) for name in expected}; assert actual == expected, actual; assert torch.version.cuda is None, torch.version.cuda; nvidia=sorted(d.metadata['Name'] for d in distributions() if d.metadata['Name'] and d.metadata['Name'].lower().startswith('nvidia-')); assert not nvidia, nvidia"
       - name: Run tests

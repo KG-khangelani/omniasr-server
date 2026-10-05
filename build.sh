@@ -1,67 +1,30 @@
-#!/bin/bash
-#
-# Build script for Omnilingual-ASR server Docker image.
-#
-# This script builds (and optionally pushes) the Docker image for the
-# Omnilingual-ASR server.
-#
-# Environment Variables:
-#
-#   MODEL_NAME    - Name of the model to build (default: omniASR_LLM_300M_v2)
-#                   The model name is used to generate the image tag suffix.
-#                   Example: omniASR_LLM_1B_v2
-#
-#   NAMESPACE     - Namespace/registry prefix for the image name (optional)
-#                   If provided, images will be tagged as NAMESPACE/omniasr-server
-#                   Example: abc/omniasr-server
-#                   If not provided, defaults to omniasr-server
-#
-#   LATEST_TAG    - Set to "true" to also tag the image as "latest"
-#                   (default: false)
-#
-#   BACKEND       - cpu (default) or cuda
-#
-#   PUSH          - Set to "true" to push the image to the registry after building
-#                   (default: false)
-#
-# Example usage:
-#
-#   # Build with default model name
-#   bash build.sh
-#
-#   # Build with another variant model name
-#   MODEL_NAME=omniASR_LLM_1B_v2 bash build.sh
-#
-#   # Build and tag as latest
-#   LATEST_TAG=true bash build.sh
-#
-#   # Build and push to registry
-#   PUSH=true bash build.sh
-#
-#   # Build with another variant model, tag as latest, and push
-#   MODEL_NAME=omniASR_LLM_1B_v2 LATEST_TAG=true PUSH=true bash build.sh
-#
-#   # Build with namespace
-#   NAMESPACE=abc bash build.sh
-#
-#   # Build with namespace and push
-#   NAMESPACE=abc PUSH=true bash build.sh
-#
+#!/usr/bin/env bash
 
+set -euo pipefail
 
-MODEL_NAME=${MODEL_NAME:-omniASR_LLM_300M_v2}
-BACKEND=${BACKEND:-cpu}
+# Build a Linux/amd64 image with its selected model preloaded. The CPU image is
+# the supported default; BACKEND=cuda opts into the CUDA 12.6 target.
+MODEL_NAME="${MODEL_NAME:-omniASR_CTC_300M_v2}"
+BACKEND="${BACKEND:-cpu}"
+NAMESPACE="${NAMESPACE:-}"
+LATEST_TAG="${LATEST_TAG:-false}"
+PUSH="${PUSH:-false}"
+
+if [[ ! "$MODEL_NAME" =~ ^omniASR_[A-Za-z0-9_]+$ ]]; then
+    echo "Invalid MODEL_NAME=$MODEL_NAME" >&2
+    exit 2
+fi
 
 case "$BACKEND" in
     cpu)
-        TARGET=default
-        BASE_TAG=cpu-pt291
-        RUN_FLAGS=""
+        target="default"
+        base_tag="cpu-pt291"
+        run_flags=()
         ;;
     cuda)
-        TARGET=cuda
-        BASE_TAG=cu126-pt291
-        RUN_FLAGS="--gpus all"
+        target="cuda"
+        base_tag="cu126-pt291"
+        run_flags=(--gpus all)
         ;;
     *)
         echo "Unsupported BACKEND=$BACKEND (expected cpu or cuda)" >&2
@@ -69,41 +32,42 @@ case "$BACKEND" in
         ;;
 esac
 
-# Convert model name to tag suffix, e.g.:
-#     omniASR_LLM_300M_v2 -> llm-300m-v2
-#     omniASR_CTC_300M_v2 -> ctc-300m-v2
-#     omniASR_LLM_Unlimited_300M_v2 -> llm-unlimited-300m-v2
-TAG_SUFFIX=$(echo $MODEL_NAME | sed 's/^omniASR_//' | tr 'A-Z_' 'a-z-')
-
-# Build image name with optional namespace
-if [ -n "$NAMESPACE" ]; then
-    IMAGE_NAME="$NAMESPACE/omniasr-server"
+tag_suffix="$({ printf '%s' "$MODEL_NAME" | sed 's/^omniASR_//' | tr 'A-Z_' 'a-z-'; })"
+if [[ -n "$NAMESPACE" ]]; then
+    image_name="${NAMESPACE%/}/omniasr-server"
 else
-    IMAGE_NAME="omniasr-server"
+    image_name="omniasr-server"
+fi
+image_tag="$image_name:$base_tag-$tag_suffix"
+
+build_args=(
+    docker buildx build
+    --platform linux/amd64
+    --target "$target"
+    --build-arg "MODEL_NAME=$MODEL_NAME"
+    -t "$image_tag"
+)
+
+if [[ "$LATEST_TAG" == "true" ]]; then
+    build_args+=(-t "$image_name:latest")
+elif [[ "$LATEST_TAG" != "false" ]]; then
+    echo "LATEST_TAG must be true or false" >&2
+    exit 2
 fi
 
-# Build tags
-TAGS="-t $IMAGE_NAME:$BASE_TAG-$TAG_SUFFIX"
-
-# Handle latest tag
-if [ "${LATEST_TAG:-false}" = "true" ]; then
-    TAGS="$TAGS -t $IMAGE_NAME:latest"
+if [[ "$PUSH" == "true" ]]; then
+    build_args+=(--push)
+elif [[ "$PUSH" == "false" ]]; then
+    build_args+=(--load)
+else
+    echo "PUSH must be true or false" >&2
+    exit 2
 fi
 
-# Build command
-BUILD_CMD="docker buildx build \
-    --platform linux/amd64 \
-    --target $TARGET \
-    --build-arg MODEL_NAME=$MODEL_NAME \
-    $TAGS"
+"${build_args[@]}" .
 
-# Optionally push
-if [ "${PUSH:-false}" = "true" ]; then
-    BUILD_CMD="$BUILD_CMD --push"
+printf 'Built %s\nRun it with:\n  docker run' "$image_tag"
+if ((${#run_flags[@]})); then
+    printf ' %q' "${run_flags[@]}"
 fi
-
-# Execute build command
-$BUILD_CMD .
-
-echo "Docker image built successfully! You can run it with:"
-echo "    docker run $RUN_FLAGS -p 8080:8080 $IMAGE_NAME:$BASE_TAG-$TAG_SUFFIX"
+printf ' --publish 127.0.0.1:8080:8080 %q\n' "$image_tag"

@@ -1,9 +1,16 @@
 [project]
 name = "omniasr-server"
 version = "0.1.0"
-description = "High-performance Omnilingual-ASR model server with OpenAI Whisper-compatible API"
+description = "Community FastAPI wrapper for serving Meta's Omnilingual ASR models"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
+license = "MIT"
+keywords = ["asr", "fastapi", "omnilingual", "speech-to-text"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
 dependencies = [
     "soundfile==0.14.0",
     "fastapi==0.142.2",
@@ -31,7 +38,11 @@ cu126 = [
 ]
 
 [dependency-groups]
-dev = ["debugpy==1.8.22", "httpx==0.28.1", "pytest==9.1.1"]
+dev = ["debugpy==1.8.22", "httpx2==2.13.0", "pytest==9.1.1"]
+
+[project.urls]
+Repository = "https://github.com/KG-khangelani/omniasr-server"
+Issues = "https://github.com/KG-khangelani/omniasr-server/issues"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

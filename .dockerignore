@@ -1,0 +1,16 @@
+.git
+.github
+.pytest_cache
+.ruff_cache
+.venv
+__pycache__
+*.ckpt
+*.flac
+*.m4a
+*.mp3
+*.py[cod]
+*.safetensors
+*.wav
+models
+results
+tests

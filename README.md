@@ -1,199 +1,246 @@
-# Omnilingual-ASR Model Server
+# Omnilingual-ASR Server
 
-A FastAPI-based ASR model server for [Omnilingual ASR](https://github.com/facebookresearch/omnilingual-asr) with an OpenAI Whisper-compatible API.
+A community-maintained FastAPI wrapper for running
+[Meta's Omnilingual ASR](https://github.com/facebookresearch/omnilingual-asr)
+behind a small, OpenAI-style transcription API.
 
-## Quick Start
+This repository and its container images are not official Meta projects. They
+do not contain training data. A build downloads the selected model weights
+from the locations configured by the upstream Omnilingual ASR/fairseq2 asset
+cards.
 
-### Local Development
+## Status
 
-```bash
-# Install dependencies with uv
-uv sync --extra cpu
+| Path | Status | Notes |
+| --- | --- | --- |
+| CPU, Python 3.12 | Validated | Model load and real transcription tested with the default CTC 300M v2 model |
+| CUDA 12.6 | Experimental | Dependency lock resolves; the updated image has not completed a GPU runtime test |
+| OpenAI compatibility | Partial | File transcription, model listing, JSON, and plain-text responses only |
 
-# Run the server
-uv run --extra cpu python main.py
-```
+The default build is CPU-only and contains no NVIDIA Python packages. The
+optional CUDA target is for Linux/amd64 hosts with an NVIDIA driver compatible
+with CUDA 12.6.
 
-## Building a Docker Image
+## Quick start with Docker
 
-The default image is CPU-only. It uses PyTorch 2.9.1 and fairseq2 0.8.1 without CUDA or NVIDIA wheel dependencies. An opt-in CUDA 12.6 image uses the matching PyTorch 2.9.1/fairseq2 0.8.1 wheel matrix.
+Requirements: Docker with BuildKit, a Linux/amd64 runtime (or compatible
+emulation), internet access during the build, and several gigabytes of disk.
+The default checkpoint alone is about 1.3 GiB according to the upstream model
+table; Python, PyTorch, build layers, and caches need additional space.
 
-Omnilingual ASR 0.2.0 still declares `fairseq2<=0.6.0`; this project carries an explicit override to fairseq2 0.8.1. Treat both backends as compatibility candidates until model-load and transcription checks pass for the built image.
-
-### Helpful resources
-
-- Supported combinations of CUDA, PyTorch, and Python for `fairseq2`: https://github.com/facebookresearch/fairseq2?tab=readme-ov-file#variants
-- Organizing sources and indices: https://docs.astral.sh/uv/concepts/indexes/
-
-### Using the build script
-
-The [`build.sh`](build.sh) script is a good place to start your own builds:
-
-```bash
-# Build with default model
-bash build.sh
-
-# Build the optional CUDA image
-BACKEND=cuda bash build.sh
-
-# Build with variant model, tag as latest, and push
-MODEL_NAME=omniASR_LLM_1B_v2 LATEST_TAG=true PUSH=true bash build.sh
-
-# Build with namespace
-NAMESPACE=abc bash build.sh
-
-# Build with namespace and push
-NAMESPACE=abc PUSH=true bash build.sh
-```
-
-**Build script options:**
-
-- `MODEL_NAME` - Name of the model to build (default: `omniASR_LLM_300M_v2`)
-- `BACKEND` - `cpu` (default) or `cuda`
-- `NAMESPACE` - Namespace/registry prefix for the image name (optional). If provided, images will be tagged as `NAMESPACE/omniasr-server`. If not provided, defaults to `omniasr-server`
-- `LATEST_TAG` - Set to `"true"` to also tag the image as `latest` (default: `false`)
-- `PUSH` - Set to `"true"` to push the image to the registry after building (default: `false`)
-
-The image tag begins with `cpu-pt291` by default or `cu126-pt291` for `BACKEND=cuda`, followed by the model suffix.
-
-### Manual build
-
-You can also build manually using Docker:
+Build the CPU image. The model is downloaded once during this step:
 
 ```bash
-docker build --build-arg MODEL_NAME=omniASR_LLM_300M_v2 -t omniasr-server .
+docker build --target default -t omniasr-server:cpu .
 ```
 
-Then, run the CPU image:
+Run it on localhost:
 
 ```bash
-docker run -p 8080:8080 omniasr-server
+docker run --rm \
+  --publish 127.0.0.1:8080:8080 \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=256m \
+  --cap-drop ALL \
+  --security-opt no-new-privileges \
+  omniasr-server:cpu
 ```
 
-Build and run the optional CUDA image explicitly:
+The image runs as numeric user/group `65532:65532`, includes a health check,
+and has the selected model preloaded. Wait for `Model ... loaded successfully`
+or for the container to report healthy before sending audio.
+
+Check the service:
 
 ```bash
-docker build --target cuda --build-arg MODEL_NAME=omniASR_LLM_300M_v2 -t omniasr-server:cuda .
-docker run --gpus all -p 8080:8080 omniasr-server:cuda
+curl http://127.0.0.1:8080/health-check
+curl http://127.0.0.1:8080/v1/models
 ```
 
-## API Usage
-
-The API is (somewhat) compatible with OpenAI's Whisper transcription endpoint. Some parameters (like `model`) are ignored (for now!) since the server only hosts one model and Omnilingual-ASR doesn't have all the features of Whisper.
-
-### Transcribe Audio
+Transcribe a local WAV or FLAC file:
 
 ```bash
-curl -X POST http://localhost:8080/v1/audio/transcriptions \
-  -H "Content-Type: multipart/form-data" \
-  -F "file=@audio.wav" \
-  -F "model=omniASR_CTC_300M_v2"
+curl --fail-with-body \
+  --request POST http://127.0.0.1:8080/v1/audio/transcriptions \
+  --form file=@audio.wav \
+  --form response_format=json
 ```
 
-### With Language Hint
+Example response:
 
-This works for the LLM variants only. For CTC and W2V, the `language` parameter is ignored.
-
-**ISO 639-1 (OpenAI API native)**
-
-```bash
-curl -X POST http://localhost:8080/v1/audio/transcriptions \
-  -F "file=@audio.wav" \
-  -F "model=omniASR_LLM_1B_v2" \
-  -F "language=en"
-```
-
-**ISO 639-3 / Script (Omnilingual-ASR native)**
-
-```bash
-curl -X POST http://localhost:8080/v1/audio/transcriptions \
-  -F "file=@audio.wav" \
-  -F "model=omniASR_LLM_1B_v2" \
-  -F "language=eng_Latn"
-```
-
-Languages are mapped heuristically from ISO 639-1 (Whisper's API) to Omnilingual-ASR's format. See how it's mapped in [`app/languages.py`](app/languages.py). For the best results, use Omnilingual-ASR's language codes.
-
-### Response Formats
-
-**JSON (default)**
-```bash
-curl -X POST http://localhost:8080/v1/audio/transcriptions -F "file=@audio.wav"
-```
 ```json
-{"text": "Hello, world!"}
+{"text":"transcribed speech"}
 ```
 
-**Plain Text**
+Use `--form response_format=text` for an unwrapped text response. Audio bytes
+are processed locally by the container; this wrapper does not accept media
+URLs or upload audio to an external transcription API.
+
+## Local Python setup
+
+Use Python 3.12 and [uv](https://docs.astral.sh/uv/):
+
 ```bash
-curl -X POST http://localhost:8080/v1/audio/transcriptions \
-  -F "file=@audio.wav" \
-  -F "response_format=text"
+uv sync --frozen --extra cpu
+uv run --frozen --extra cpu python main.py
 ```
 
-### Python Client
+The first local start downloads the configured model to fairseq2's cache. Run
+the tests without loading model weights:
 
 ```bash
-uv run scripts/openai_client.py
+uv run --frozen --extra cpu pytest -q
 ```
 
-See the [openai_client.py](scripts/openai_client.py) code. It's pretty straightforward.
+The dependency rationale and safe upgrade procedure are in
+[DEPENDENCIES.md](DEPENDENCIES.md), including the documented upstream
+`transformers` advisory constraint and its operating mitigations.
 
+## Client examples
+
+### curl
+
+```bash
+curl --fail-with-body \
+  http://127.0.0.1:8080/v1/audio/transcriptions \
+  --form file=@audio.flac \
+  --form model=omniASR_CTC_300M_v2
+```
+
+The endpoint requires a multipart file upload. WAV and FLAC are the safest
+choices; other formats depend on the codecs available through libsndfile.
+
+### Python OpenAI client
+
+The example is a standalone uv script and installs its exact client version in
+uv's script environment:
+
+```bash
+uv run scripts/openai_client.py ./audio.wav
+```
+
+For an LLM model variant, an optional language hint can be supplied:
+
+```bash
+uv run scripts/openai_client.py ./audio.wav --language xho_Latn
+```
+
+CTC and W2V variants ignore `language`. LLM variants accept Omnilingual ASR
+language-script identifiers; ISO 639-1 values are mapped heuristically in
+[`app/languages.py`](app/languages.py).
+
+## API surface
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/health-check` | Process readiness after startup/model load |
+| `GET` | `/v1/models` | The single configured model |
+| `POST` | `/v1/audio/transcriptions` | Transcribe one uploaded audio file |
+
+Supported transcription fields:
+
+| Field | Behavior |
+| --- | --- |
+| `file` | Required multipart upload |
+| `language` | Used only by LLM model variants |
+| `response_format` | `json` (default) or `text` |
+| `model` | Accepted for client compatibility; the loaded server model is used |
+| `prompt`, `temperature`, `timestamp_granularities` | Accepted but currently ignored |
+
+Formats such as `verbose_json`, `srt`, and `vtt` are not implemented and
+return an OpenAI-shaped HTTP 400 error instead of silently returning the wrong
+format. Errors use this shape:
+
+```json
+{
+  "error": {
+    "message": "...",
+    "type": "invalid_request_error",
+    "param": "file",
+    "code": null
+  }
+}
+```
 
 ## Configuration
 
-
-### Environment Variables
-
 | Variable | Default | Description |
-|----------|---------|-------------|
-| `MODEL_NAME` | `omniASR_CTC_300M_v2` | Model to use for transcription |
-| `OMNILINGUAL_PORT` | `8080` | Server port |
-| `OMNILINGUAL_HOST` | `0.0.0.0` | Server host |
-| `OMNILINGUAL_DTYPE` | `auto` | Model dtype: `auto`, `float16`, `bfloat16`, or `float32`. Use `float32` if FP16 CTC inference produces blank output on older GPUs. CPU defaults to FP32. |
+| --- | --- | --- |
+| `MODEL_NAME` | `omniASR_CTC_300M_v2` | Model asset card loaded at startup |
+| `OMNILINGUAL_HOST` | `0.0.0.0` | Listen address inside the container |
+| `OMNILINGUAL_PORT` | `8080` | Listen port |
+| `OMNILINGUAL_DTYPE` | `auto` | `auto`, `float16`, `bfloat16`, or `float32` |
 
-### Changing the Model
+CPU always defaults to FP32. CUDA `auto` uses BF16 on devices with compute
+capability 8.0 or newer and FP16 on older devices. On a GTX 1660 Super, FP16
+CTC inference returned blank text while FP32 returned text for the same sample;
+set `OMNILINGUAL_DTYPE=float32` if you see that behavior. FP32 also needs more
+VRAM, and this observation is not a transcription-accuracy claim.
 
-See [Omnilingual-ASR's GitHub page](https://github.com/facebookresearch/omnilingual-asr/tree/main?tab=readme-ov-file#model-architectures) for a list of available models.
-
-You can specify the model either at build time or at runtime:
-
-**At build time (recommended):**
-
-```bash
-# Build with a specific model
-MODEL_NAME=omniASR_LLM_1B_v2 bash build.sh
-
-# Then run the container
-docker run -p 8080:8080 omniasr-server:cpu-pt291-llm-1b-v2
-```
-
-**At runtime:**
+To bake another upstream model into an image:
 
 ```bash
-# Run with a different model (model will be downloaded on first run)
-docker run -p 8080:8080 \
-  -e MODEL_NAME=omniASR_CTC_1B_v2 \
-  omniasr-server
+docker build \
+  --target default \
+  --build-arg MODEL_NAME=omniASR_LLM_300M_v2 \
+  --tag omniasr-server:llm-300m .
 ```
 
-**When running locally:**
+Or use the guarded build helper:
 
 ```bash
-MODEL_NAME=omniASR_CTC_1B_v2 uv run --extra cpu python main.py
+bash build.sh
+MODEL_NAME=omniASR_LLM_300M_v2 bash build.sh
 ```
 
-**NOTE:** When running locally, on the first run, `fairseq` will download the weights and cache it to your device. Subsequent runs only loads the cached weights.
+`BACKEND`, `MODEL_NAME`, `NAMESPACE`, `LATEST_TAG`, and `PUSH` configure the
+helper. `PUSH=false` (the default) loads the image locally; `PUSH=true` pushes
+the resulting tag. Review a target registry before enabling a push.
 
-## Endpoints
+## Optional CUDA image
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/v1/audio/transcriptions` | POST | Transcribe audio file |
-| `/v1/models` | GET | List the deployed model |
-| `/health-check` | GET | Health check |
+The CUDA path is opt-in because the updated stack is not yet runtime-validated:
+
+```bash
+BACKEND=cuda bash build.sh
+docker run --rm --gpus all \
+  --publish 127.0.0.1:8080:8080 \
+  omniasr-server:cu126-pt291-ctc-300m-v2
+```
+
+It locks PyTorch/torchaudio 2.9.1+cu126 to fairseq2/fairseq2n 0.8.1+cu126.
+Do not describe this path as supported until the built image loads a model and
+transcribes a fixed sample on the target GPU.
+
+## Model and resource notes
+
+- The standard CTC and LLM variants have an upstream 40-second input limit.
+  Use an `Unlimited` LLM asset or split longer audio deliberately.
+- The upstream table lists about 2 GiB of inference VRAM for CTC 300M v2 on an
+  A100 using BF16. Different hardware, dtypes, drivers, and concurrent GPU
+  workloads change that requirement.
+- In one local CPU check, 262.596 seconds of audio split into ten bounded chunks
+  completed in 60.079 seconds, peaked at about 2.493 GiB sampled RAM, and used
+  roughly six logical CPU cores. This is a single observation, not a benchmark
+  or quality guarantee.
+- A successful language label, HTTP response, or non-empty transcript does not
+  establish transcription accuracy. Review output with a fluent speaker.
+
+## Security and deployment
+
+This is a local inference wrapper, not a hardened public service. It has no
+authentication, TLS termination, rate limiting, request-size limit, or tenant
+isolation. Bind to `127.0.0.1` for local use. If you expose it to a network,
+place it behind a trusted reverse proxy and add those controls. Uploaded files
+are read into memory, so enforce a body-size limit at the proxy.
+
+The container needs outbound network access while building or when asked to
+load a model that was not baked into the image. A container using its preloaded
+model can otherwise be run with a restricted network policy. Never mount the
+Docker socket or a broad home directory into this service.
 
 ## License
 
-This server code is MIT licensed. The Omnilingual ASR models are released under Apache 2.0 by Meta.
-
+The wrapper code is MIT licensed. Omnilingual ASR code and model weights are
+published by Meta under Apache 2.0; review the upstream project for the exact
+terms and model documentation.
