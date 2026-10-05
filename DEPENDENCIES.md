@@ -12,6 +12,8 @@ extras so a CPU install does not silently pull NVIDIA packages.
 | Omnilingual ASR | 0.2.0 | Latest released package |
 | PyTorch / torchaudio | 2.9.1 | Exact version supported by released fairseq2 0.8 wheels |
 | fairseq2 / fairseq2n | 0.8.1 | Latest released fairseq2 version |
+| Transformers | 5.18.0 | Latest compatible version; clears the 4.57.6 advisories |
+| Hugging Face Hub | 1.33.0 | Version selected by the Transformers 5 lock |
 | CUDA variant | 12.6 | Official fairseq2/PyTorch 2.9.1 wheel variant |
 
 `omnilingual-asr==0.2.0` still declares `fairseq2<=0.6.0`. This project uses an
@@ -45,26 +47,50 @@ Official references:
 The GitHub workflow performs steps 3–5 for the CPU extra. Model weights are
 not downloaded in CI.
 
-## Known advisory constraint
+## fairseq2 Transformers 5 metadata backport
 
-As of 2026-10-05, `pip-audit` reports nine advisory records (six unique IDs:
-[`PYSEC-2025-217`](https://osv.dev/vulnerability/PYSEC-2025-217),
-[`PYSEC-2026-2288`](https://osv.dev/vulnerability/PYSEC-2026-2288),
-[`PYSEC-2026-2289`](https://osv.dev/vulnerability/PYSEC-2026-2289),
-[`PYSEC-2026-2290`](https://osv.dev/vulnerability/PYSEC-2026-2290),
-[`PYSEC-2026-3929`](https://osv.dev/vulnerability/PYSEC-2026-3929), and
-[`PYSEC-2026-4174`](https://osv.dev/vulnerability/PYSEC-2026-4174)) against
-`transformers==4.57.6`. That is the newest version allowed by fairseq2 0.8.1's
-declared `transformers~=4.57` requirement; available patched releases are in
-the incompatible 5.x series. Overriding another model-stack constraint without
-upstream support would not be a safe update.
+Released fairseq2 0.8.1 declares `transformers~=4.57`, which prevents a
+resolver from selecting releases that fix the known 4.57.6 advisories.
+fairseq2 upstream subsequently merged
+[PR #1508](https://github.com/facebookresearch/fairseq2/pull/1508) in
+[commit `027bdeb`](https://github.com/facebookresearch/fairseq2/commit/027bdebca4b9177f1ac1df1cc981b9288465d68e),
+updating its metadata to Transformers 5 and loosening the Hugging Face Hub
+upper bound. The change passed upstream's Python 3.12 / PyTorch 2.9.1 CPU,
+CUDA 12.6, and CUDA 12.8 jobs.
 
-The reported paths involve loading or saving attacker-controlled model,
-configuration, tokenizer, or custom-code content. This server's HTTP API
-accepts audio bytes only: it does not accept model repositories, checkpoints,
-or configuration objects. Keep model selection under operator control, use
-trusted upstream asset cards, bake the model into the image, and run the
-preloaded container without outbound network access where possible. Do not
-adapt this wrapper to load untrusted model content while this constraint
-remains. Re-check the advisories when fairseq2 publishes a Transformers 5
-compatible release.
+Until fairseq2 publishes a release containing that change, this project uses
+a uv package-scoped override for fairseq2 0.8.1 only. It permits
+`transformers>=5.10,<6` and `huggingface-hub>=0.32,<2`; the 5.10 floor is the
+first release above all known affected Transformers versions as of
+2026-10-05. The override changes dependency metadata only. It does not patch
+or vendor fairseq2 code, and it does not remove Transformers: fairseq2 imports
+its Hugging Face integration while initializing the model composition layer.
+
+`uv audit --locked` is part of CI. Model sources still remain operator
+controlled; this server accepts audio bytes, not model repositories,
+checkpoints, configuration objects, or custom code.
+
+## Reviewed PyTorch audit exceptions
+
+The locked PyTorch 2.9.1 build currently has four audit findings:
+
+- [`PYSEC-2026-139`](https://osv.dev/vulnerability/PYSEC-2026-139), local
+  deserialization through the PT2 loading handler; the database provides no
+  fixed-version marker.
+- [`GHSA-qfhq-4f3w-5fph`](https://osv.dev/vulnerability/GHSA-qfhq-4f3w-5fph),
+  local memory corruption through `torch.lstm_cell`, fixed in PyTorch 2.10.
+- [`GHSA-rrmf-rvhw-rf47`](https://osv.dev/vulnerability/GHSA-rrmf-rvhw-rf47),
+  local memory corruption through `torch.jit.script`, fixed in PyTorch 2.13.
+- [`PYSEC-2026-2286`](https://osv.dev/vulnerability/PYSEC-2026-2286), crafted
+  checkpoint memory corruption in `torch.load(..., weights_only=True)`, fixed
+  in PyTorch 2.10.
+
+These are explicit CI exceptions, not claims that PyTorch 2.9.1 is patched.
+The released fairseq2 0.8 matrix has no build newer than PyTorch 2.9.1, and
+fairseq2 warns that its native extension must exactly match PyTorch's ABI.
+The wrapper does not accept checkpoints or Python/model code through HTTP;
+builds preload an operator-selected upstream asset and production runs should
+have no outbound network. CI continues to fail on every advisory except these
+four IDs, and `PYSEC-2026-139` uses `--ignore-until-fixed` so a published fix
+automatically makes that exception fail. Revisit all four when fairseq2 ships
+an ABI-compatible release on a patched PyTorch line.

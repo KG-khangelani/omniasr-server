@@ -51,7 +51,18 @@ pythonpath = ["."]
 # omnilingual-asr 0.2.0 still declares fairseq2<=0.6.0, but fairseq2 publishes
 # an official PyTorch 2.9.1/CUDA 12.6 build. Keep the compatibility override
 # explicit until omnilingual-asr updates its package metadata.
-override-dependencies = ["fairseq2[arrow]==0.8.1"]
+#
+# Released fairseq2 0.8.1 also caps Transformers at 4.57. Upstream fairseq2
+# merged Transformers 5 support in PR #1508 after that release. Scope this
+# metadata backport to fairseq2 0.8.1 so it cannot rewrite another package's
+# requirements; the 5.10 security floor excludes all known affected releases.
+override-dependencies = [
+    "fairseq2[arrow]==0.8.1",
+    { package = { name = "fairseq2", version = "0.8.1" }, dependencies = [
+        "transformers>=5.10,<6",
+        "huggingface-hub>=0.32,<2",
+    ] },
+]
 conflicts = [
     [
         { extra = "cpu" },

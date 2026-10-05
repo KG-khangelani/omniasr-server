@@ -93,8 +93,8 @@ uv run --frozen --extra cpu pytest -q
 ```
 
 The dependency rationale and safe upgrade procedure are in
-[DEPENDENCIES.md](DEPENDENCIES.md), including the documented upstream
-`transformers` advisory constraint and its operating mitigations.
+[DEPENDENCIES.md](DEPENDENCIES.md), including the package-scoped backport of
+fairseq2's upstream Transformers 5 compatibility fix.
 
 ## Client examples
 

@@ -24,7 +24,16 @@ jobs:
       - name: Install locked CPU dependency set
         run: |
           uv lock --check
+          # fairseq2 0.8 has no released ABI-compatible wheel newer than
+          # PyTorch 2.9.1. These four reviewed exceptions are documented in
+          # DEPENDENCIES.md; every other advisory still fails this job.
+          uv audit --locked \
+            --ignore-until-fixed PYSEC-2026-139 \
+            --ignore GHSA-qfhq-4f3w-5fph \
+            --ignore GHSA-rrmf-rvhw-rf47 \
+            --ignore PYSEC-2026-2286
           uv sync --frozen --extra cpu
-          uv run --frozen --extra cpu python -c "from importlib.metadata import distributions, version; import torch; expected={'torch':'2.9.1+cpu','torchaudio':'2.9.1+cpu','fairseq2':'0.8.1','fairseq2n':'0.8.1'}; actual={name:version(name) for name in expected}; assert actual == expected, actual; assert torch.version.cuda is None, torch.version.cuda; nvidia=sorted(d.metadata['Name'] for d in distributions() if d.metadata['Name'] and d.metadata['Name'].lower().startswith('nvidia-')); assert not nvidia, nvidia"
+          uv run --frozen --extra cpu python -c "from importlib.metadata import distributions, version; import torch; expected={'torch':'2.9.1+cpu','torchaudio':'2.9.1+cpu','fairseq2':'0.8.1','fairseq2n':'0.8.1+cpu','omnilingual-asr':'0.2.0','transformers':'5.18.0','huggingface-hub':'1.33.0'}; actual={name:version(name) for name in expected}; assert actual == expected, actual; assert torch.version.cuda is None, torch.version.cuda; nvidia=sorted(d.metadata['Name'] for d in distributions() if d.metadata['Name'] and d.metadata['Name'].lower().startswith('nvidia-')); assert not nvidia, nvidia"
+          uv run --frozen --extra cpu python -c "import transformers; from fairseq2.composition.assets import AssetStore; from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline; assert transformers.__version__ == '5.18.0'"
       - name: Run tests
         run: uv run --frozen --extra cpu pytest -q
